@@ -12,19 +12,19 @@ clean:
 
 test:
 	sudo dmesg -C   # 清除缓存信息
-	sudo insmod mymodule.ko
-	lsmod | grep "mymodule"
-	sudo rmmod mymodule.ko
-	dmesg
+	sudo insmod mymodule.ko  # 加载模块
+	lsmod | grep "mymodule"  # 查看模块是否成功加载
+	sudo rmmod mymodule.ko   # 卸载模块
+	dmesg              #  查看内核输出信息;
 
 test_device:
 	sudo dmesg -C   # 清除缓存信息
 	sudo insmod mymodule.ko
 	lsmod | grep "mymodule"
 	dmesg
-	sudo mknod /dev/chardev c 237 0
+	sudo mknod /dev/chardev c 237 0  # 注册设备;
 	cat /dev/chardev
-	sudo rm /dev/chardev
+	sudo rm /dev/chardev   # 删除设备;
 	sudo rmmod mymodule.ko
 	dmesg
 
