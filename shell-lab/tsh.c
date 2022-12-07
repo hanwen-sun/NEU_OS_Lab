@@ -175,6 +175,7 @@ void eval(char *cmdline)
     sigset_t mask_all, mask_one, prev_one;
 
     strcpy(buf, cmdline);
+    pipeid = 0;
     state = parseline(buf, argv);
     if(argv[0] == NULL)
         return;
@@ -185,6 +186,7 @@ void eval(char *cmdline)
     char *argv_right[MAXARGS];
     int pipe_right  = 0;
     //printf("%s\n", argv[0]);
+    // printf("%d\n", pipeid);
     if(pipeid) {
         int i = pipeid;
         for(i = pipeid; argv[i] != NULL; i++) {
@@ -221,8 +223,10 @@ void eval(char *cmdline)
                 dup2(pipefd[1], 1);   // 标准输出的内容写入管道;
                 close(pipefd[0]);
             }
+
+            // printf("exec?\n");
             if(execve(argv[0], argv, environ) < 0) {   // 其中argv[0]是可执行目标文件, argv是参数列表, environ是环境变量;
-                fprintf(stderr, "%s: Command not found/\n", argv[0]);
+                printf("%s: Command not found/\n", argv[0]);
                 exit(0);
             }
         }
@@ -252,7 +256,6 @@ void eval(char *cmdline)
                 dup2(pipefd[0], 0);   // 管道读入的内容作为标准输入;
                 setpgid(0, 0);     // leave the child away from the parent's process group;
                 sigprocmask(SIG_SETMASK, &prev_one, NULL);   // unblock
-                /*check whether the output need to redirect*/
                 if(state & (1 << 1)) {
                     int i = 0;
                     for(i = 0; argv_right[i] != 0; i++) {
@@ -272,7 +275,7 @@ void eval(char *cmdline)
                     printf("errno: %d\n", errno);
                     exit(0);
                 }
-            }
+            } 
 
             else {
                 close(pipefd[0]);
@@ -289,9 +292,10 @@ void eval(char *cmdline)
                     printf("%d %s", pipeid?pid1:pid2, cmdline);
                 }
 
-                printf("go here!\n");
+                // printf("go here!\n");
                 return;
             }
+            } 
         }
         
         
@@ -299,21 +303,20 @@ void eval(char *cmdline)
         close(pipefd[1]);
         sigprocmask(SIG_BLOCK, &mask_all, NULL);   // 保证Job在Delete之前成功添加!!!
         int bg = state & 1;
-        addjob(jobs, pipeid ? pid1:pid2, bg + 1, cmdline);
+        addjob(jobs, pipeid ? pid2:pid1, bg + 1, cmdline);
         sigprocmask(SIG_SETMASK, &prev_one, NULL);  // unblock sigchild;
         if(!bg) {
             waitfg(0);
         }
 
         else {
-            printf("%d %s", pipeid?pid1:pid2, cmdline);
+            printf("%d %s", pipeid?pid2:pid1, cmdline);
         }
 
-        printf("go here!\n");
+        //printf("go here!\n");
     }
         
     return;
-    }
 }
 
 /* 
@@ -516,29 +519,35 @@ void sigchld_handler(int sig)
     int olderrno = errno;
     pid_t pid;
     while((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {    // 有子进程被终止或停止，都返回pid;(SIGCONT返回-1)
-        printf("chld pid: %d\n", pid);
+        //printf("chld pid: %d\n", pid);
         sigprocmask(SIG_BLOCK, &mask, &prev);   // 这里需要mask, 防止出现正常消亡再加control c或control z;
         if(WIFEXITED(status)) {    // 子进程正常exit()退出;
             // int pid = fgpid(jobs);
-            printf("handle pid: %d\n", pid);
+            // printf("handle pid: %d\n", pid);
             if(pid != 0) 
                 deletejob(jobs, pid);
         }
 
         if(WIFSTOPPED(status)) {    // 特别注意, 这里也可能是别的进程发来的信号, 所以这里也要处理;
-            printf("chld catch stopped! %d\n", pid);
+            //printf("chld catch stopped! %d\n", pid);
             struct job_t *job = getjobpid(jobs, pid);
-            printf("Job [%d] (%d) stopped by SIGTSTP.\n", job->jid, pid);
-            if(job->state != 3) 
+            
+            if(job->state != 3) {
+                printf("Job [%d] (%d) stopped by SIGTSTP.\n", job->jid, pid);
                 job->state = 3;
+            }
             
             return;
         }
         if(WIFSIGNALED(status)) {   // 非正常终止的信号;
-            printf("unknown signal: %d\n", pid);    
-            struct job_t *job = getjobpid(jobs, pid);       
-            printf("Job [%d] (%d) stopped by SIGINT.\n", job->jid, pid);
-            deletejob(jobs, pid);
+            //printf("unknown signal: %d\n", pid);    
+            struct job_t *job = getjobpid(jobs, pid);   
+
+            if(job != NULL) {
+                printf("Job [%d] (%d) stopped by SIGINT.\n", job->jid, pid);
+                deletejob(jobs, pid);
+            }    
+            
             return;
         }
 
